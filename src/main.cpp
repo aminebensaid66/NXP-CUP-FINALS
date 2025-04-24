@@ -2,7 +2,7 @@
 #include <Servo.h>
 #include <Pixy2.h>
 #include <Encoder.h>
-
+#include <telemtry.h>
 #define IN1 1 // right
 #define IN2 0 // right
 #define IN3 2 // left
@@ -64,7 +64,8 @@ int horizontalLinesIndex = 0;
 IntervalTimer myTimer;
 Encoder enc1(4, 5); // left encoder
 Encoder enc2(7, 6); // right encoder
-long oldPosition = -999;
+long oldPosition2 = -999;
+long oldPosition1 = -999;
 void softwareReset()
 {
   SCB_AIRCR = 0x05FA0004;
@@ -388,12 +389,15 @@ bool checkfinalAngle(int angle)
 
 void loop()
 {
-  moveCar(150, 150);
-  long newPosition = enc1.read();
-  if (newPosition != oldPosition)
+  long newPosition1 = enc1.read();
+
+  // Only print if there's a change
+  if (newPosition1 != oldPosition1)
   {
-    oldPosition = newPosition;
-    Serial.print("Position = ");
-    Serial.println(newPosition);
+    oldPosition1 = newPosition1;
+    sendData("Left_Encoder", newPosition1);
+    sendData("Left", 10);
+    sendData("Right_Encoder", enc2.read());
+    sendData("Right", 10);
   }
 }
