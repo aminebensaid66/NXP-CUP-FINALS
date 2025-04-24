@@ -2,7 +2,7 @@
 #include <Servo.h>
 #include <Pixy2.h>
 #include <Encoder.h>
-#include <telemtry.h>
+#include <Serial_Plotting.h>
 #define IN1 1 // right
 #define IN2 0 // right
 #define IN3 2 // left
@@ -396,8 +396,6 @@ void loop()
   {
     oldPosition1 = newPosition1;
     sendData("Left_Encoder", newPosition1);
-    sendData("Left", 10);
     sendData("Right_Encoder", enc2.read());
-    sendData("Right", 10);
   }
 }
