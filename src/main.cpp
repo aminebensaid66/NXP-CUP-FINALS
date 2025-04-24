@@ -1,10 +1,16 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <Pixy2.h>
-#define IN1 2 // right
-#define IN2 3 // right
-#define IN3 1 // left
-#define IN4 0 // left
+#include <Encoder.h>
+
+#define IN1 1 // right
+#define IN2 0 // right
+#define IN3 2 // left
+#define IN4 3 // left
+#define ENCODER1_A 4
+#define ENCODER1_B 5
+#define ENCODER2_A 6
+#define ENCODER2_B 7
 #define STEERING_SERVO_PIN 23
 #define CAMERA_SERVO_PIN 22
 #define angle_Horizental 2
@@ -16,7 +22,7 @@
 #define MOTOR_SPEED_MAX 240
 #define MOTOR_SPEED_MIN 130
 #define LINE_VECTOR_SIZE 20
-#define HORIZONTAL_LINE_SIZE 10
+#define HORIZONTAL_LINE_SIZE 1
 #define KI 0.0
 #define KD 0
 #define ANGLE_SETPOINT 0
@@ -56,6 +62,9 @@ int rightVectorsIndex = 0;
 int leftVectorsIndex = 0;
 int horizontalLinesIndex = 0;
 IntervalTimer myTimer;
+Encoder enc1(4, 5); // left encoder
+Encoder enc2(7, 6); // right encoder
+long oldPosition = -999;
 void softwareReset()
 {
   SCB_AIRCR = 0x05FA0004;
@@ -379,4 +388,12 @@ bool checkfinalAngle(int angle)
 
 void loop()
 {
+  moveCar(150, 150);
+  long newPosition = enc1.read();
+  if (newPosition != oldPosition)
+  {
+    oldPosition = newPosition;
+    Serial.print("Position = ");
+    Serial.println(newPosition);
+  }
 }
