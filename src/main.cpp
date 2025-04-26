@@ -390,12 +390,12 @@ bool checkfinalAngle(int angle)
 void loop()
 {
   long newPosition1 = enc1.read();
-
-  // Only print if there's a change
-  if (newPosition1 != oldPosition1)
+  long newPosition2 = enc2.read();
+  if (newPosition2 != oldPosition2 || newPosition1 != oldPosition1)
   {
+    oldPosition2 = newPosition2;
     oldPosition1 = newPosition1;
     sendData("Left_Encoder", newPosition1);
-    sendData("Right_Encoder", enc2.read());
+    sendData("Right_Encoder", newPosition2);
   }
 }
