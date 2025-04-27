@@ -5,14 +5,14 @@
 #include <Serial_Plotting.h>
 #define IN1 1 // right
 #define IN2 0 // right
-#define IN3 2 // left
-#define IN4 3 // left
+#define IN3 3 // left
+#define IN4 2 // left
 #define ENCODER1_A 4
 #define ENCODER1_B 5
 #define ENCODER2_A 6
 #define ENCODER2_B 7
-#define STEERING_SERVO_PIN 23
-#define CAMERA_SERVO_PIN 22
+#define STEERING_SERVO_PIN 22
+#define CAMERA_SERVO_PIN 23
 #define angle_Horizental 2
 #define MAX_ERROR_SUM 1000
 #define STEERING_SERVO_MAX_LEFT 36
@@ -31,12 +31,6 @@
 #define angleArraySize 5
 #define TRIGGER_PIN 9
 #define ECHO_PIN 8
-int i = initi;
-int pressed = 0;
-int x = 0;
-int firstAngleArray = 0;
-int finalAngleArray[angleArraySize];
-unsigned long currentMillisCheckHorizentalLines;
 typedef struct vectorPixy
 {
   double longueur;
@@ -45,27 +39,42 @@ typedef struct vectorPixy
   int m_y1;
   int m_y0;
 } vectorPixy;
-int distance;
-float KP = 9.5;
-int defaultServoAngle = 78;
-int backwardPWM = -120;
-unsigned long previousMillis = 0;
-const long interval = 16.7;
-int finishline = 0;
 Servo myServo1;
 Servo myServo2;
 Pixy2 pixy;
 vectorPixy leftVectors[LINE_VECTOR_SIZE];
 vectorPixy rightVectors[LINE_VECTOR_SIZE];
 vectorPixy horizontalLines[HORIZONTAL_LINE_SIZE];
+IntervalTimer myTimer;
+Encoder enc1(5, 4);                      // left encoder
+Encoder enc2(6, 7);                      // right encoder
+const float wheel_circumference = 0.065; // meters (example: 21cm wheel perimeter)
+const int left_encoder_ticks_per_rev = 430;
+const int right_encoder_ticks_per_rev = 459;
+const long interval = 16.7;
+int finishline = 0;
+unsigned long last_time = 0;
+unsigned long currentMillisCheckHorizentalLines;
+unsigned long previousMillis = 0;
+float KP = 9.5;
+long last_left_ticks = 0;
+long last_right_ticks = 0;
+long left_speed_cm_s = 0;
+long right_speed_cm_s = 0;
+long oldPosition2 = -999;
+long oldPosition1 = -999;
 int rightVectorsIndex = 0;
 int leftVectorsIndex = 0;
 int horizontalLinesIndex = 0;
-IntervalTimer myTimer;
-Encoder enc1(4, 5); // left encoder
-Encoder enc2(7, 6); // right encoder
-long oldPosition2 = -999;
-long oldPosition1 = -999;
+int i = initi;
+int pressed = 0;
+int x = 0;
+int firstAngleArray = 0;
+int finalAngleArray[angleArraySize];
+int defaultServoAngle = 78;
+int backwardPWM = -120;
+int distance;
+
 void softwareReset()
 {
   SCB_AIRCR = 0x05FA0004;
@@ -90,7 +99,7 @@ void setup()
   myServo1.attach(STEERING_SERVO_PIN);
   myServo2.attach(CAMERA_SERVO_PIN);
   myServo1.write(defaultServoAngle);
-  myServo2.write(100);
+  myServo2.write(170);
   pixy.init();
   pixy.changeProg("line");
   pixy.setLamp(1, 1);
@@ -323,7 +332,6 @@ double pidControl(int angle)
   double errorforsum = angle;
   constrain(errorforsum, -25, 25);
   error = (double)(ANGLE_SETPOINT - errorforsum);
-
   if (errorSum > MAX_ERROR_SUM)
   {
     errorSum = MAX_ERROR_SUM;
@@ -386,16 +394,35 @@ bool checkfinalAngle(int angle)
   }
   return true;
 }
+void calculate_speed()
+{
+  unsigned long current_time = millis();
+  long current_left_ticks = enc2.read();
+  long current_right_ticks = enc1.read();
+  float delta_time = (current_time - last_time) / 1000.0; // seconds
+  if (delta_time == 0)
+    delta_time = 0.001; // avoid division by zero
 
+  long delta_left_ticks = current_left_ticks - last_left_ticks;
+  long delta_right_ticks = current_right_ticks - last_right_ticks;
+
+  float left_ticks_per_sec = delta_left_ticks / delta_time;
+  float right_ticks_per_sec = delta_right_ticks / delta_time;
+
+  left_speed_cm_s = (left_ticks_per_sec / left_encoder_ticks_per_rev) * wheel_circumference * 100;    // centimetre
+  right_speed_cm_s = (right_ticks_per_sec / right_encoder_ticks_per_rev) * wheel_circumference * 100; // centimetre
+
+  last_time = current_time;
+  last_left_ticks = current_left_ticks;
+  last_right_ticks = current_right_ticks;
+}
 void loop()
 {
-  long newPosition1 = enc1.read();
-  long newPosition2 = enc2.read();
-  if (newPosition2 != oldPosition2 || newPosition1 != oldPosition1)
-  {
-    oldPosition2 = newPosition2;
-    oldPosition1 = newPosition1;
-    sendData("Left_Encoder", newPosition1);
-    sendData("Right_Encoder", newPosition2);
-  }
+  moveCar(255, 255);
+  calculate_speed();
+  Serial.print("Left speed: ");
+  Serial.println(left_speed_cm_s);
+  Serial.print(" cm/s | Right speed: ");
+  Serial.println(right_speed_cm_s);
+  delay(8);
 }
