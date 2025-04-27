@@ -15,7 +15,7 @@
 #define CAMERA_SERVO_PIN 23
 #define angle_Horizental 2
 #define MAX_ERROR_SUM 1000
-#define STEERING_SERVO_MAX_LEFT 36
+#define STEERING_SERVO_MAX_LEFT 40
 #define STEERING_SERVO_MAX_RIGHT 128
 #define CAMERA_SERVO_MAX_LEFT 0
 #define CAMERA_SERVO_MAX_RIGHT 165
@@ -56,7 +56,7 @@ int finishline = 0;
 unsigned long last_time = 0;
 unsigned long currentMillisCheckHorizentalLines;
 unsigned long previousMillis = 0;
-float KP = 9.5;
+float KP = 8;
 long last_left_ticks = 0;
 long last_right_ticks = 0;
 long left_speed_cm_s = 0;
@@ -99,12 +99,12 @@ void setup()
   myServo1.attach(STEERING_SERVO_PIN);
   myServo2.attach(CAMERA_SERVO_PIN);
   myServo1.write(defaultServoAngle);
-  myServo2.write(170);
+  myServo2.write(40);
   pixy.init();
   pixy.changeProg("line");
   pixy.setLamp(1, 1);
   Serial.begin(115200);
-  myTimer.begin(readPixy, 33000); // 33000 µs = 33 ms
+  // myTimer.begin(readPixy, 33000); // 33000 µs = 33 ms
 }
 
 void moveCar(int pwmLeft, int pwmRight)
@@ -194,6 +194,8 @@ void sortVectorsByProximity(vectorPixy vectors[], int size)
 }
 void filterLines()
 {
+  pixy.line.getAllFeatures();
+
   leftVectorsIndex = 0;
   rightVectorsIndex = 0;
   horizontalLinesIndex = 0;
@@ -309,15 +311,15 @@ int calculateAngle()
   }
   else if (leftVectorsIndex == 0 && rightVectorsIndex == 0)
   {
-    i++;
-    if (calculatedAngle > 0)
-    {
-      calculatedAngle += i;
-    }
-    else if (calculatedAngle < 0)
-    {
-      calculatedAngle -= i;
-    }
+    // i++;
+    // if (calculatedAngle > 0)
+    // {
+    //   calculatedAngle += i;
+    // }
+    // else if (calculatedAngle < 0)
+    // {
+    //   calculatedAngle -= i;
+    // }
   }
 
   return calculatedAngle;
@@ -466,8 +468,29 @@ void update_speed_pid()
 }
 void loop()
 {
-  update_speed_pid();
-  sendData("left_speed", right_speed_cm_s);
-  sendData("desired_left_speed", target_right_speed_cm_s);
-  delay(8);
+  unsigned long currentMillis = millis();
+  if (currentMillisCheckHorizentalLines - currentMillis >= 10000)
+  {
+    checkForAlignedLines();
+  }
+
+  previousMillis = currentMillis;
+  pixy.setLamp(0, 0);
+  int angle = calculateAngle();
+  checkForAlignedLines();
+  int output = (int)pidControl(angle);
+  output = constrain(output, -255, 255);
+  angle = constrain(angle, -25, 25);
+  int servoAngle = map(output, -255, 255, 50, -50);
+
+  int testservoAngle = map(angle, -25, 25, defaultServoAngle - 45, defaultServoAngle + 45);
+  testservoAngle = constrain(testservoAngle, STEERING_SERVO_MAX_LEFT, STEERING_SERVO_MAX_RIGHT);
+  int finalAngle = (int)(testservoAngle);
+  sendData("angle", angle);
+  sendData("finalAngle", finalAngle);
+  int motorMapping = map(abs(angle), 0, 35, MOTOR_SPEED_MAX, 80);
+  motorMapping = constrain(motorMapping, MOTOR_SPEED_MIN, MOTOR_SPEED_MAX);
+  setSteeringServo(finalAngle);
+  int motorOutput = 150;
+  moveCar(motorOutput, motorOutput);
 }
