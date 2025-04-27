@@ -99,7 +99,7 @@ void setup()
   myServo1.attach(STEERING_SERVO_PIN);
   myServo2.attach(CAMERA_SERVO_PIN);
   myServo1.write(defaultServoAngle);
-  myServo2.write(40);
+  myServo2.write(50);
   pixy.init();
   pixy.changeProg("line");
   pixy.setLamp(1, 1);
