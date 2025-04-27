@@ -416,13 +416,58 @@ void calculate_speed()
   last_left_ticks = current_left_ticks;
   last_right_ticks = current_right_ticks;
 }
+// PID parameters
+float kp = 10.0; // Proportional gain
+float ki = 0.5;  // Integral gain
+float kd = 10;   // Derivative gain
+
+// Target speeds (setpoints)
+float target_left_speed_cm_s = 20.0; // example 20 cm/s
+float target_right_speed_cm_s = 20.0;
+
+// PID variables
+float left_error = 0, right_error = 0;
+float last_left_error = 0, last_right_error = 0;
+float left_integral = 0, right_integral = 0;
+
+// Motor commands
+int left_pwm = 0;
+int right_pwm = 0;
+void update_speed_pid()
+{
+  calculate_speed(); // Step 1: update current speed
+
+  // LEFT MOTOR PID
+  float left_error = target_left_speed_cm_s - left_speed_cm_s;
+  left_integral += left_error;
+  float left_derivative = left_error - last_left_error;
+
+  float left_output = (kp * left_error) + (ki * left_integral) + (kd * left_derivative);
+
+  left_pwm += left_output; // Add PID output to PWM
+  left_pwm = constrain(left_pwm, 0, 255);
+
+  // RIGHT MOTOR PID
+  float right_error = target_right_speed_cm_s - right_speed_cm_s;
+  right_integral += right_error;
+  float right_derivative = right_error - last_right_error;
+
+  float right_output = (kp * right_error) + (ki * right_integral) + (kd * right_derivative);
+
+  right_pwm += right_output;
+  right_pwm = constrain(right_pwm, 0, 255);
+
+  // Apply to motors
+  moveCar(left_pwm, right_pwm);
+
+  // Save last errors for next derivative calculation
+  last_left_error = left_error;
+  last_right_error = right_error;
+}
 void loop()
 {
-  moveCar(255, 255);
-  calculate_speed();
-  Serial.print("Left speed: ");
-  Serial.println(left_speed_cm_s);
-  Serial.print(" cm/s | Right speed: ");
-  Serial.println(right_speed_cm_s);
+  update_speed_pid();
+  sendData("left_speed", right_speed_cm_s);
+  sendData("desired_left_speed", target_right_speed_cm_s);
   delay(8);
 }
