@@ -14,7 +14,7 @@
 #define STEERING_SERVO_PIN 22
 #define CAMERA_SERVO_PIN 23
 #define angle_Horizental 2
-#define MAX_ERROR_SUM 1000
+#define MAX_ERROR_SUM 2000
 #define STEERING_SERVO_MAX_LEFT 40
 #define STEERING_SERVO_MAX_RIGHT 128
 #define CAMERA_SERVO_MAX_LEFT 0
@@ -27,7 +27,7 @@
 #define KD 0
 #define ANGLE_SETPOINT 0
 #define buttonPin 23
-#define initi 10
+#define initi 0
 #define angleArraySize 5
 #define TRIGGER_PIN 9
 #define ECHO_PIN 8
@@ -66,7 +66,7 @@ long oldPosition1 = -999;
 int rightVectorsIndex = 0;
 int leftVectorsIndex = 0;
 int horizontalLinesIndex = 0;
-int i = initi;
+int q = 0;
 int pressed = 0;
 int x = 0;
 int firstAngleArray = 0;
@@ -74,7 +74,16 @@ int finalAngleArray[angleArraySize];
 int defaultServoAngle = 78;
 int backwardPWM = -120;
 int distance;
-
+int angleArrayIndex = 0;
+// Target speeds (setpoints)
+float target_left_speed_cm_s = 20.0; // example 20 cm/s
+float target_right_speed_cm_s = 20.0;
+// Motor commands
+int left_pwm = 0;
+int right_pwm = 0;
+int currentPwmLeft = 0;
+int currentPwmRight = 0;
+const int maxDeltaPWM = 5; // Max change of PWM per update (you can tune this)
 void softwareReset()
 {
   SCB_AIRCR = 0x05FA0004;
@@ -92,23 +101,28 @@ void setup()
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(TRIGGER_PIN, INPUT_PULLUP);
   pinMode(ECHO_PIN, INPUT);
   digitalWrite(TRIGGER_PIN, LOW);
   delay(100); // Stabilize sensor
   myServo1.attach(STEERING_SERVO_PIN);
   myServo2.attach(CAMERA_SERVO_PIN);
   myServo1.write(defaultServoAngle);
-  myServo2.write(60);
+  myServo2.write(30);
   pixy.init();
   pixy.changeProg("line");
-  pixy.setLamp(1, 1);
+  pixy.setLamp(0, 0);
   Serial.begin(115200);
-  // myTimer.begin(readPixy, 33000); // 33000 µs = 33 ms
 }
-
 void moveCar(int pwmLeft, int pwmRight)
 {
+  if (pwmLeft == 0 && pwmRight == 0)
+  {
+    analogWrite(IN1, 0);
+    analogWrite(IN2, 0);
+    analogWrite(IN3, 0);
+    analogWrite(IN4, 0);
+  }
   if (pwmLeft > 0)
   {
     analogWrite(IN3, pwmLeft);
@@ -192,10 +206,24 @@ void sortVectorsByProximity(vectorPixy vectors[], int size)
     }
   }
 }
+void sortVectorsByLength(vectorPixy vectors[], int size)
+{
+  for (int i = 0; i < size - 1; i++)
+  {
+    for (int j = 0; j < size - i - 1; j++)
+    {
+      if (vectors[j].longueur < vectors[j + 1].longueur)
+      {
+        vectorPixy temp = vectors[j];
+        vectors[j] = vectors[j + 1];
+        vectors[j + 1] = temp;
+      }
+    }
+  }
+}
 void filterLines()
 {
   pixy.line.getAllFeatures();
-
   leftVectorsIndex = 0;
   rightVectorsIndex = 0;
   horizontalLinesIndex = 0;
@@ -259,55 +287,69 @@ void filterLines()
     }
   }
 
-  sortVectorsByProximity(leftVectors, leftVectorsIndex);
-  sortVectorsByProximity(rightVectors, rightVectorsIndex);
+  sortVectorsByLength(leftVectors, leftVectorsIndex);
+  sortVectorsByLength(rightVectors, rightVectorsIndex);
 }
 int calculateAngle()
 {
   static int checkTwoLines = 1;
   filterLines();
-  static int calculatedAngle = 0;
+  static float calculatedAngle = 0;
   int middleLine_x0 = 0;
   int middleLine_x1 = 0;
   int middleLine_y0 = 0;
   int middleLine_y1 = 0;
+
   if (leftVectorsIndex >= 1 && rightVectorsIndex >= 1)
   {
     // Case 1: The car sees two lines
     // Checking to see if the lines are not connected with each others
-    i = initi;
     if ((abs(leftVectors[0].m_x1 - rightVectors[0].m_x0) > 2 && abs(leftVectors[0].m_y1 - rightVectors[0].m_y0) > 2) &&
         (abs(leftVectors[0].m_x0 - rightVectors[0].m_x1) > 2 && abs(leftVectors[0].m_y0 - rightVectors[0].m_y1) > 2))
     {
+      // int laneWidthPixels = abs(rightVectors[0].m_x0 - leftVectors[0].m_x0); // or use m_x1 if more stable
+      //  sendData("lane widht pixels", laneWidthPixels);
       checkTwoLines = 1;
       middleLine_x0 = (leftVectors[0].m_x0 + rightVectors[0].m_x0) / 2;
       middleLine_x1 = (leftVectors[0].m_x1 + rightVectors[0].m_x1) / 2;
       middleLine_y0 = (leftVectors[0].m_y0 + rightVectors[0].m_y0) / 2;
       middleLine_y1 = (leftVectors[0].m_y1 + rightVectors[0].m_y1) / 2;
-      calculatedAngle = ((middleLine_x0 + middleLine_x1) / 2) - ((int)pixy.frameWidth / 2);
+      int robotdistance = ((middleLine_x0 + middleLine_x1) / 2) - ((int)pixy.frameWidth / 2);
+      float dx = middleLine_x1 - middleLine_x0;
+      float dy = middleLine_y1 - middleLine_y0;
+      float slope = dy / dx;
+      float angleRadians = atan(slope);
+      float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
+      sendData("robot distance: ", robotdistance);
+      calculatedAngle = angleDegrees;
+      sendData("calculated angle:", calculatedAngle);
+      q = 0;
+      // sendData("left vector longuueyr", leftVectors[0].longueur);
+      // sendData("right vector longueur", rightVectors[0].longueur);
     }
   }
-  else if (leftVectorsIndex >= 1 && rightVectorsIndex == 0 && checkTwoLines)
+  else if (leftVectorsIndex >= 1 && rightVectorsIndex == 0)
   {
-    // Case 2: The Car sees only the left line, the right line will be the margin of the screen
-    i = initi;
+
+    q++;
     checkTwoLines = 0;
-    middleLine_x0 = (leftVectors[0].m_x0 + pixy.frameWidth) / 2;
-    middleLine_x1 = (leftVectors[0].m_x1 + pixy.frameWidth) / 2;
-    middleLine_y0 = (leftVectors[0].m_y0 + pixy.frameHeight) / 2;
-    middleLine_y1 = (leftVectors[0].m_y1 + 0) / 2;
-    calculatedAngle = middleLine_x0 + middleLine_x1 - (int)pixy.frameWidth;
+    float dx = leftVectors[0].m_x1 - leftVectors[0].m_x0;
+    float dy = leftVectors[0].m_y1 - leftVectors[0].m_y0;
+
+    float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
+
+    int finalcons = map(angleDegrees, 90, 180, 0, 35);
+    calculatedAngle = calculatedAngle;
+    // Serial.println(q);
+    //  sendData("angle", calculatedAngle);
   }
-  else if (leftVectorsIndex == 0 && rightVectorsIndex >= 1 && checkTwoLines)
+  else if (leftVectorsIndex == 0 && rightVectorsIndex >= 1)
   {
-    // Case 3: The Car sees only the right line, the left line will be the margin of the screen
-    i = initi;
-    checkTwoLines = 0;
-    middleLine_x0 = (0 + rightVectors[0].m_x0) / 2;
-    middleLine_x1 = (0 + rightVectors[0].m_x1) / 2;
-    middleLine_y0 = (pixy.frameHeight + rightVectors[0].m_y0) / 2;
-    middleLine_y1 = (0 + rightVectors[0].m_y1) / 2;
-    calculatedAngle = middleLine_x0 + middleLine_x1 - (int)pixy.frameWidth;
+
+    float dx = rightVectors[0].m_x1 - rightVectors[0].m_x0;
+    float dy = rightVectors[0].m_y1 - rightVectors[0].m_y0;
+    float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
+    calculatedAngle = angleDegrees;
   }
   else if (leftVectorsIndex == 0 && rightVectorsIndex == 0)
   {
@@ -321,7 +363,6 @@ int calculateAngle()
     //   calculatedAngle -= i;
     // }
   }
-
   return calculatedAngle;
 }
 double pidControl(int angle)
@@ -370,7 +411,6 @@ void checkForAlignedLines()
     finishline = 1;
   }
 }
-int angleArrayIndex = 0;
 // this is for intersections need to test without it
 bool checkfinalAngle(int angle)
 {
@@ -418,79 +458,59 @@ void calculate_speed()
   last_left_ticks = current_left_ticks;
   last_right_ticks = current_right_ticks;
 }
-// PID parameters
-float kp = 10.0; // Proportional gain
-float ki = 0.5;  // Integral gain
-float kd = 10;   // Derivative gain
 
-// Target speeds (setpoints)
-float target_left_speed_cm_s = 20.0; // example 20 cm/s
-float target_right_speed_cm_s = 20.0;
-
-// PID variables
-float left_error = 0, right_error = 0;
-float last_left_error = 0, last_right_error = 0;
-float left_integral = 0, right_integral = 0;
-
-// Motor commands
-int left_pwm = 0;
-int right_pwm = 0;
-void update_speed_pid()
+void moveCarSmooth(int targetPwmLeft, int targetPwmRight)
 {
-  calculate_speed(); // Step 1: update current speed
+  // Update left motor PWM gradually
+  if (targetPwmLeft > currentPwmLeft)
+  {
+    currentPwmLeft = min(currentPwmLeft + maxDeltaPWM, targetPwmLeft);
+  }
+  else if (targetPwmLeft < currentPwmLeft)
+  {
+    currentPwmLeft = max(currentPwmLeft - maxDeltaPWM, targetPwmLeft);
+  }
 
-  // LEFT MOTOR PID
-  float left_error = target_left_speed_cm_s - left_speed_cm_s;
-  left_integral += left_error;
-  float left_derivative = left_error - last_left_error;
+  // Update right motor PWM gradually
+  if (targetPwmRight > currentPwmRight)
+  {
+    currentPwmRight = min(currentPwmRight + maxDeltaPWM, targetPwmRight);
+  }
+  else if (targetPwmRight < currentPwmRight)
+  {
+    currentPwmRight = max(currentPwmRight - maxDeltaPWM, targetPwmRight);
+  }
 
-  float left_output = (kp * left_error) + (ki * left_integral) + (kd * left_derivative);
-
-  left_pwm += left_output; // Add PID output to PWM
-  left_pwm = constrain(left_pwm, 0, 255);
-
-  // RIGHT MOTOR PID
-  float right_error = target_right_speed_cm_s - right_speed_cm_s;
-  right_integral += right_error;
-  float right_derivative = right_error - last_right_error;
-
-  float right_output = (kp * right_error) + (ki * right_integral) + (kd * right_derivative);
-
-  right_pwm += right_output;
-  right_pwm = constrain(right_pwm, 0, 255);
-
-  // Apply to motors
-  moveCar(left_pwm, right_pwm);
-
-  // Save last errors for next derivative calculation
-  last_left_error = left_error;
-  last_right_error = right_error;
+  // Now call your old moveCar but with smooth PWM values
+  // sendData("currentPWmlef", currentPwmLeft);
+  moveCar(currentPwmLeft, currentPwmRight);
 }
 void loop()
 {
   unsigned long currentMillis = millis();
+
   if (currentMillisCheckHorizentalLines - currentMillis >= 10000)
   {
     checkForAlignedLines();
   }
+  int stoppin = digitalRead(TRIGGER_PIN);
 
   previousMillis = currentMillis;
-  pixy.setLamp(0, 0);
   int angle = calculateAngle();
-  checkForAlignedLines();
-  int output = (int)pidControl(angle);
-  output = constrain(output, -255, 255);
-  angle = constrain(angle, -25, 25);
-  int servoAngle = map(output, -255, 255, 50, -50);
-
-  int testservoAngle = map(angle, -25, 25, defaultServoAngle - 45, defaultServoAngle + 45);
-  testservoAngle = constrain(testservoAngle, STEERING_SERVO_MAX_LEFT, STEERING_SERVO_MAX_RIGHT);
-  int finalAngle = (int)(testservoAngle);
-  sendData("angle", angle);
-  sendData("finalAngle", finalAngle);
-  int motorMapping = map(abs(angle), 0, 35, MOTOR_SPEED_MAX, 80);
-  motorMapping = constrain(motorMapping, MOTOR_SPEED_MIN, MOTOR_SPEED_MAX);
-  setSteeringServo(finalAngle);
-  int motorOutput = 150;
-  moveCar(motorOutput, motorOutput);
+  // sendData("angle", angle);
+  int finalangle = constrain(angle, 30, 150);
+  finalangle = map(finalangle, 30, 150, defaultServoAngle - 50, defaultServoAngle + 50);
+  // sendData("finalangle:", finalangle);
+  //  sendData("leftvectors", leftVectorsIndex);
+  //  sendData("right vecrtors",rightVectorsIndex);
+  setSteeringServo(finalangle);
+  if (stoppin != HIGH)
+  {
+    moveCar(0, 0);
+    // Serial.println("7BASSSS ");
+  }
+  else
+  {
+    moveCar(230, 230);
+  }
 }
