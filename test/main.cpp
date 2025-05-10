@@ -45,11 +45,24 @@ Pixy2 pixy;
 vectorPixy leftVectors[LINE_VECTOR_SIZE];
 vectorPixy rightVectors[LINE_VECTOR_SIZE];
 vectorPixy horizontalLines[HORIZONTAL_LINE_SIZE];
+IntervalTimer myTimer;
+Encoder enc1(5, 4);                      // left encoder
+Encoder enc2(6, 7);                      // right encoder
+const float wheel_circumference = 0.065; // meters (example: 21cm wheel perimeter)
+const int left_encoder_ticks_per_rev = 430;
+const int right_encoder_ticks_per_rev = 459;
 const long interval = 16.7;
 int finishline = 0;
 unsigned long last_time = 0;
 unsigned long currentMillisCheckHorizentalLines;
 unsigned long previousMillis = 0;
+float KP = 8;
+long last_left_ticks = 0;
+long last_right_ticks = 0;
+long left_speed_cm_s = 0;
+long right_speed_cm_s = 0;
+long oldPosition2 = -999;
+long oldPosition1 = -999;
 int rightVectorsIndex = 0;
 int leftVectorsIndex = 0;
 int horizontalLinesIndex = 0;
@@ -63,7 +76,16 @@ int backwardPWM = -120;
 int distance;
 int angleArrayIndex = 0;
 int robotdistance;
-int anglethrethold = 15;
+
+// Target speeds (setpoints)
+float target_left_speed_cm_s = 20.0; // example 20 cm/s
+float target_right_speed_cm_s = 20.0;
+// Motor commands
+int left_pwm = 0;
+int right_pwm = 0;
+int currentPwmLeft = 0;
+int currentPwmRight = 0;
+const int maxDeltaPWM = 5; // Max change of PWM per update (you can tune this)
 void softwareReset()
 {
   SCB_AIRCR = 0x05FA0004;
@@ -81,7 +103,7 @@ void setup()
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(TRIGGER_PIN, INPUT_PULLUP);
   pinMode(ECHO_PIN, INPUT);
   digitalWrite(TRIGGER_PIN, LOW);
   pinMode(20, INPUT_PULLUP);
@@ -203,7 +225,7 @@ void sortVectorsByLength(vectorPixy vectors[], int size)
 }
 void filterLines()
 {
-  readPixy();
+  pixy.line.getAllFeatures();
   leftVectorsIndex = 0;
   rightVectorsIndex = 0;
   horizontalLinesIndex = 0;
@@ -221,19 +243,6 @@ void filterLines()
     // Serial.println("horizontal angle:");
     // Serial.println(horizontalAngle);
     // this is to detect the arrival line (yelzem neprogramiwha bch matakrach l starting line )
-    float dx1 = pixy.line.vectors[i].m_x1 - pixy.line.vectors[i].m_x0;
-    float dy1 = pixy.line.vectors[i].m_y1 - pixy.line.vectors[i].m_y0;
-
-    float slope1 = dy1 / dx1;
-    float anglDegrees1 = fmod(atan2(dy1, dx1) * (180.0 / M_PI) + 180.0, 180.0);
-    // Print index and angle
-    Serial.print("Vector ");
-    Serial.print(i);
-    Serial.print(": Angle = ");
-    Serial.print(anglDegrees1);
-    Serial.println(" degrees");
-    // delay(1000);
-    int yStart = max(pixy.line.vectors[i].m_y0, pixy.line.vectors[i].m_y1);
     if (horizontalAngle < 20 && horizontalAngle > 0 && horizontalLinesIndex < HORIZONTAL_LINE_SIZE)
     {
       horizontalLines[horizontalLinesIndex].m_x0 = pixy.line.vectors[i].m_x0;
@@ -242,57 +251,46 @@ void filterLines()
       horizontalLines[horizontalLinesIndex].m_y1 = pixy.line.vectors[i].m_y1;
       horizontalLinesIndex++;
     }
-    if (anglDegrees1 > anglethrethold && anglDegrees1 < 180 - anglethrethold && yStart > pixy.frameHeight * 0.1)
+
+    if (pixy.line.vectors[i].m_y0 > pixy.line.vectors[i].m_y1)
     {
-      if (horizontalLinesIndex >= 1)
-      {
-        horizontalLines[horizontalLinesIndex].m_x0 = pixy.line.vectors[i].m_x0;
-        horizontalLines[horizontalLinesIndex].m_x1 = pixy.line.vectors[i].m_x1;
-        horizontalLines[horizontalLinesIndex].m_y0 = pixy.line.vectors[i].m_y0;
-        horizontalLines[horizontalLinesIndex].m_y1 = pixy.line.vectors[i].m_y1;
-        horizontalLinesIndex++;
-      }
-
-      if (pixy.line.vectors[i].m_y0 > pixy.line.vectors[i].m_y1)
-      {
-        aux_x0 = pixy.line.vectors[i].m_x0;
-        aux_x1 = pixy.line.vectors[i].m_x1;
-        aux_y0 = pixy.line.vectors[i].m_y0;
-        aux_y1 = pixy.line.vectors[i].m_y1;
-      }
-      else
-      {
-        aux_x0 = pixy.line.vectors[i].m_x1;
-        aux_x1 = pixy.line.vectors[i].m_x0;
-        aux_y0 = pixy.line.vectors[i].m_y1;
-        aux_y1 = pixy.line.vectors[i].m_y0;
-      }
-
-      double aux_longueur = sqrt(pow(aux_y1 - aux_y0, 2) + pow(aux_x1 - aux_x0, 2));
-
-      if (aux_x0 < pixy.frameWidth / 2)
-      {
-        leftVectors[leftVectorsIndex].longueur = aux_longueur;
-        leftVectors[leftVectorsIndex].m_x0 = aux_x0;
-        leftVectors[leftVectorsIndex].m_x1 = aux_x1;
-        leftVectors[leftVectorsIndex].m_y0 = aux_y0;
-        leftVectors[leftVectorsIndex].m_y1 = aux_y1;
-        leftVectorsIndex++;
-      }
-      else
-      {
-        rightVectors[rightVectorsIndex].longueur = aux_longueur;
-        rightVectors[rightVectorsIndex].m_x0 = aux_x0;
-        rightVectors[rightVectorsIndex].m_x1 = aux_x1;
-        rightVectors[rightVectorsIndex].m_y0 = aux_y0;
-        rightVectors[rightVectorsIndex].m_y1 = aux_y1;
-        rightVectorsIndex++;
-      }
+      aux_x0 = pixy.line.vectors[i].m_x0;
+      aux_x1 = pixy.line.vectors[i].m_x1;
+      aux_y0 = pixy.line.vectors[i].m_y0;
+      aux_y1 = pixy.line.vectors[i].m_y1;
+    }
+    else
+    {
+      aux_x0 = pixy.line.vectors[i].m_x1;
+      aux_x1 = pixy.line.vectors[i].m_x0;
+      aux_y0 = pixy.line.vectors[i].m_y1;
+      aux_y1 = pixy.line.vectors[i].m_y0;
     }
 
-    sortVectorsByLength(leftVectors, leftVectorsIndex);
-    sortVectorsByLength(rightVectors, rightVectorsIndex);
+    double aux_longueur = sqrt(pow(aux_y1 - aux_y0, 2) + pow(aux_x1 - aux_x0, 2));
+
+    if (aux_x0 < pixy.frameWidth / 2)
+    {
+      leftVectors[leftVectorsIndex].longueur = aux_longueur;
+      leftVectors[leftVectorsIndex].m_x0 = aux_x0;
+      leftVectors[leftVectorsIndex].m_x1 = aux_x1;
+      leftVectors[leftVectorsIndex].m_y0 = aux_y0;
+      leftVectors[leftVectorsIndex].m_y1 = aux_y1;
+      leftVectorsIndex++;
+    }
+    else
+    {
+      rightVectors[rightVectorsIndex].longueur = aux_longueur;
+      rightVectors[rightVectorsIndex].m_x0 = aux_x0;
+      rightVectors[rightVectorsIndex].m_x1 = aux_x1;
+      rightVectors[rightVectorsIndex].m_y0 = aux_y0;
+      rightVectors[rightVectorsIndex].m_y1 = aux_y1;
+      rightVectorsIndex++;
+    }
   }
+
+  sortVectorsByLength(leftVectors, leftVectorsIndex);
+  sortVectorsByLength(rightVectors, rightVectorsIndex);
 }
 int calculateAngle()
 {
@@ -303,7 +301,7 @@ int calculateAngle()
   int middleLine_x1 = 0;
   int middleLine_y0 = 0;
   int middleLine_y1 = 0;
-  sendData("left vector index", leftVectorsIndex);
+
   if (leftVectorsIndex >= 1 && rightVectorsIndex >= 1)
   {
 
@@ -329,12 +327,12 @@ int calculateAngle()
     float anglDegrees1 = fmod(atan2(dy1, dx1) * (180.0 / M_PI) + 180.0, 180.0);
     float anglDegrees2 = fmod(atan2(dy2, dx2) * (180.0 / M_PI) + 180.0, 180.0);
     // sendData("angle left:", anglDegrees1);
-    //  sendData("angle right", anglDegrees2);
+    // sendData("angle right", anglDegrees2);
     float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
-    robotdistance = constrain(robotdistance, -15, 15);
+
     calculatedAngle = angleDegrees + robotdistance;
 
-    sendData("robot distance: ", robotdistance);
+    // sendData("robot distance: ", robotdistance);
 
     // sendData("calculated angle:", calculatedAngle);
     q = 0;
@@ -390,6 +388,37 @@ int calculateAngle()
   }
   return calculatedAngle;
 }
+double pidControl(int angle)
+{
+  static double errorSum = 0.0;
+  static double prevError = 0.0;
+  static double output = 0.0;
+  double error = 0.0;
+  double derivative = 0.0;
+  double errorforsum = angle;
+  constrain(errorforsum, -25, 25);
+  error = (double)(ANGLE_SETPOINT - errorforsum);
+  if (errorSum > MAX_ERROR_SUM)
+  {
+    errorSum = MAX_ERROR_SUM;
+    // moveCar(0, 0);
+    // Serial.println("errorSum >= MAX_ERROR_SUM");
+  }
+  else if (errorSum < -MAX_ERROR_SUM)
+  {
+    errorSum = -1 * MAX_ERROR_SUM;
+    // moveCar(0, 0);
+  }
+  else
+  {
+    errorSum += error;
+  }
+
+  derivative = (error - prevError);
+  output = (double)KP * error + (double)KI * errorSum + (double)KD * derivative;
+  prevError = error;
+  return output;
+}
 void checkForAlignedLines()
 {
   int k = 0;
@@ -414,65 +443,68 @@ bool checkfinalAngle(int angle)
   {
     if (abs(angle - finalAngleArray[i - 1]) > threshold)
     {
+
       k++;
     }
   }
-  if (k > 2)
+  if (k > 5)
   {
     return false;
   }
   return true;
 }
-// void calculate_speed()
-// {
-//     unsigned long current_time = millis();
-//     long current_left_ticks = enc2.read();
-//     long current_right_ticks = enc1.read();
-//     float delta_time = (current_time - last_time) / 1000.0; // seconds
-//     if (delta_time == 0)
-//         delta_time = 0.001; // avoid division by zero
+void calculate_speed()
+{
+  unsigned long current_time = millis();
+  long current_left_ticks = enc2.read();
+  long current_right_ticks = enc1.read();
+  float delta_time = (current_time - last_time) / 1000.0; // seconds
+  if (delta_time == 0)
+    delta_time = 0.001; // avoid division by zero
 
-//     long delta_left_ticks = current_left_ticks - last_left_ticks;
-//     long delta_right_ticks = current_right_ticks - last_right_ticks;
+  long delta_left_ticks = current_left_ticks - last_left_ticks;
+  long delta_right_ticks = current_right_ticks - last_right_ticks;
 
-//     float left_ticks_per_sec = delta_left_ticks / delta_time;
-//     float right_ticks_per_sec = delta_right_ticks / delta_time;
+  float left_ticks_per_sec = delta_left_ticks / delta_time;
+  float right_ticks_per_sec = delta_right_ticks / delta_time;
 
-//     left_speed_cm_s = (left_ticks_per_sec / left_encoder_ticks_per_rev) * wheel_circumference * 100;    // centimetre
-//     right_speed_cm_s = (right_ticks_per_sec / right_encoder_ticks_per_rev) * wheel_circumference * 100; // centimetre
+  left_speed_cm_s = (left_ticks_per_sec / left_encoder_ticks_per_rev) * wheel_circumference * 100;    // centimetre
+  right_speed_cm_s = (right_ticks_per_sec / right_encoder_ticks_per_rev) * wheel_circumference * 100; // centimetre
 
-//     last_time = current_time;
-//     last_left_ticks = current_left_ticks;
-//     last_right_ticks = current_right_ticks;
-// }
+  last_time = current_time;
+  last_left_ticks = current_left_ticks;
+  last_right_ticks = current_right_ticks;
+}
 
-// void moveCarSmooth(int targetPwmLeft, int targetPwmRight)
-// {
-//     // Update left motor PWM gradually
-//     if (targetPwmLeft > currentPwmLeft)
-//     {
-//         currentPwmLeft = min(currentPwmLeft + maxDeltaPWM, targetPwmLeft);
-//     }
-//     else if (targetPwmLeft < currentPwmLeft)
-//     {
-//         currentPwmLeft = max(currentPwmLeft - maxDeltaPWM, targetPwmLeft);
-//     }
+void moveCarSmooth(int targetPwmLeft, int targetPwmRight)
+{
+  // Update left motor PWM gradually
+  if (targetPwmLeft > currentPwmLeft)
+  {
+    currentPwmLeft = min(currentPwmLeft + maxDeltaPWM, targetPwmLeft);
+  }
+  else if (targetPwmLeft < currentPwmLeft)
+  {
+    currentPwmLeft = max(currentPwmLeft - maxDeltaPWM, targetPwmLeft);
+  }
 
-//     // Update right motor PWM gradually
-//     if (targetPwmRight > currentPwmRight)
-//     {
-//         currentPwmRight = min(currentPwmRight + maxDeltaPWM, targetPwmRight);
-//     }
-//     else if (targetPwmRight < currentPwmRight)
-//     {
-//         currentPwmRight = max(currentPwmRight - maxDeltaPWM, targetPwmRight);
-//     }
+  // Update right motor PWM gradually
+  if (targetPwmRight > currentPwmRight)
+  {
+    currentPwmRight = min(currentPwmRight + maxDeltaPWM, targetPwmRight);
+  }
+  else if (targetPwmRight < currentPwmRight)
+  {
+    currentPwmRight = max(currentPwmRight - maxDeltaPWM, targetPwmRight);
+  }
 
-//     // Now call your old moveCar but with smooth PWM values
-//     // sendData("currentPWmlef", currentPwmLeft);
-//     moveCar(currentPwmLeft, currentPwmRight);
-// }
-
+  // Now call your old moveCar but with smooth PWM values
+  // sendData("currentPWmlef", currentPwmLeft);
+  moveCar(currentPwmLeft, currentPwmRight);
+}
+int h = 0;
+bool ok;
+float kspeed = 1.5;
 void loop()
 {
   unsigned long currentMillis = millis();
@@ -485,16 +517,25 @@ void loop()
 
   previousMillis = currentMillis;
   int angle = calculateAngle();
+  // sendData("angle", angle);
   int finalangle = constrain(angle, 30, 150);
   finalangle = map(finalangle, 30, 150, defaultServoAngle - 35, defaultServoAngle + 35);
-  sendData("finalangle", finalangle);
+  sendData("finalangle:", finalangle);
+  // sendData("leftvectors", leftVectorsIndex);
+  // sendData("right vecrtors", rightVectorsIndex);
+  // sendData("finalangle", finalangle);
   if (stoppin != LOW)
   {
     moveCar(0, 0);
+    // Serial.println("7BASSSS ");
   }
   else
   {
-    moveCar(190, 190);
+    int expspeed = finalangle - defaultServoAngle;
+    target_left_speed_cm_s = 255 / (1 + exp(kspeed * (abs(expspeed) - 15)));
+    target_right_speed_cm_s = 255 / (1 + exp(kspeed * (abs(expspeed) - 15)));
+    // moveCarSmooth(target_left_speed_cm_s, target_right_speed_cm_s);
+    moveCar(160, 160);
   }
   finalAngleArray[angleArrayIndex] = finalangle;
   angleArrayIndex++;
