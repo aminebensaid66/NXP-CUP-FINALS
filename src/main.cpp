@@ -22,15 +22,15 @@
 #define MOTOR_SPEED_MAX 240
 #define MOTOR_SPEED_MIN 130
 #define LINE_VECTOR_SIZE 20
-#define HORIZONTAL_LINE_SIZE 1
+#define HORIZONTAL_LINE_SIZE 5
 #define KI 0.0
 #define KD 0
 #define ANGLE_SETPOINT 0
 #define buttonPin 23
 #define initi 0
 #define angleArraySize 15
-#define TRIGGER_PIN 9
-#define ECHO_PIN 8
+#define TRIGGER_PIN 14
+#define ECHO_PIN 15
 typedef struct vectorPixy
 {
   double longueur;
@@ -89,7 +89,7 @@ void setup()
   myServo1.attach(STEERING_SERVO_PIN);
   myServo2.attach(CAMERA_SERVO_PIN);
   myServo1.write(defaultServoAngle);
-  myServo2.write(55);
+  myServo2.write(45);
   pixy.init();
   pixy.changeProg("line");
   pixy.setLamp(0, 0);
@@ -132,6 +132,8 @@ void checkBox()
   float distance;
 
   // Send 10us HIGH pulse to trigger pin
+  digitalWrite(TRIGGER_PIN, LOW);
+  delayMicroseconds(2);
   digitalWrite(TRIGGER_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIGGER_PIN, LOW);
@@ -142,7 +144,7 @@ void checkBox()
   // Calculate distance in cm
   distance = duration * 0.0343 / 2;
   Serial.print("Distance: ");
-  Serial.print(distance);
+  Serial.print(duration);
   Serial.println(" cm");
   if (duration == 0)
   {
@@ -153,10 +155,10 @@ void checkBox()
 
     if (distance < 20)
     {
-      moveCar(-150, -150);
-      delay(500);
-      moveCar(0, 0);
-      delay(5000);
+      // moveCar(-150, -150);
+      // delay(500);
+      // moveCar(0, 0);
+      // delay(5000);
     }
   }
 }
@@ -227,31 +229,33 @@ void filterLines()
     float slope1 = dy1 / dx1;
     float anglDegrees1 = fmod(atan2(dy1, dx1) * (180.0 / M_PI) + 180.0, 180.0);
     // Print index and angle
-    Serial.print("Vector ");
-    Serial.print(i);
-    Serial.print(": Angle = ");
-    Serial.print(anglDegrees1);
-    Serial.println(" degrees");
+    // Serial.print("Vector ");
+    // Serial.print(i);
+    // Serial.print(": Angle = ");
+    // Serial.print(anglDegrees1);
+    // Serial.println(" degrees");
     // delay(1000);
     int yStart = max(pixy.line.vectors[i].m_y0, pixy.line.vectors[i].m_y1);
-    if (horizontalAngle < 20 && horizontalAngle > 0 && horizontalLinesIndex < HORIZONTAL_LINE_SIZE)
+    if (horizontalAngle < 20 && horizontalAngle >= 0 && horizontalLinesIndex < HORIZONTAL_LINE_SIZE)
     {
       horizontalLines[horizontalLinesIndex].m_x0 = pixy.line.vectors[i].m_x0;
       horizontalLines[horizontalLinesIndex].m_x1 = pixy.line.vectors[i].m_x1;
       horizontalLines[horizontalLinesIndex].m_y0 = pixy.line.vectors[i].m_y0;
       horizontalLines[horizontalLinesIndex].m_y1 = pixy.line.vectors[i].m_y1;
+      horizontalLines[horizontalLinesIndex].longueur = sqrt(pow(pixy.line.vectors[i].m_y1 - pixy.line.vectors[i].m_y0, 2) + pow(pixy.line.vectors[i].m_x1 - pixy.line.vectors[i].m_x0, 2));
       horizontalLinesIndex++;
     }
     if (anglDegrees1 > anglethrethold && anglDegrees1 < 180 - anglethrethold && yStart > pixy.frameHeight * 0.1)
     {
-      if (horizontalLinesIndex >= 1)
-      {
-        horizontalLines[horizontalLinesIndex].m_x0 = pixy.line.vectors[i].m_x0;
-        horizontalLines[horizontalLinesIndex].m_x1 = pixy.line.vectors[i].m_x1;
-        horizontalLines[horizontalLinesIndex].m_y0 = pixy.line.vectors[i].m_y0;
-        horizontalLines[horizontalLinesIndex].m_y1 = pixy.line.vectors[i].m_y1;
-        horizontalLinesIndex++;
-      }
+      // if (horizontalLinesIndex >= 1)
+      // {
+      //   horizontalLines[horizontalLinesIndex].m_x0 = pixy.line.vectors[i].m_x0;
+      //   horizontalLines[horizontalLinesIndex].m_x1 = pixy.line.vectors[i].m_x1;
+      //   horizontalLines[horizontalLinesIndex].m_y0 = pixy.line.vectors[i].m_y0;
+      //   horizontalLines[horizontalLinesIndex].m_y1 = pixy.line.vectors[i].m_y1;
+      //   horizontalLines[horizontalLinesIndex].longueur = sqrt(pow(pixy.line.vectors[i].m_y1 - pixy.line.vectors[i].m_y0, 2) + pow(pixy.line.vectors[i].m_x1 - pixy.line.vectors[i].m_x0, 2));
+      //   horizontalLinesIndex++;
+      // }
 
       if (pixy.line.vectors[i].m_y0 > pixy.line.vectors[i].m_y1)
       {
@@ -303,7 +307,6 @@ int calculateAngle()
   int middleLine_x1 = 0;
   int middleLine_y0 = 0;
   int middleLine_y1 = 0;
-  sendData("left vector index", leftVectorsIndex);
   if (leftVectorsIndex >= 1 && rightVectorsIndex >= 1)
   {
 
@@ -333,8 +336,6 @@ int calculateAngle()
     float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
     robotdistance = constrain(robotdistance, -15, 15);
     calculatedAngle = angleDegrees + robotdistance;
-
-    sendData("robot distance: ", robotdistance);
 
     // sendData("calculated angle:", calculatedAngle);
     q = 0;
@@ -395,11 +396,14 @@ void checkForAlignedLines()
   int k = 0;
   for (int i = 0; i < horizontalLinesIndex; i++)
   {
-    if (horizontalLines[i].m_y0 >= pixy.frameHeight - 20 && horizontalLines[i].m_y1 >= pixy.frameHeight - 20)
+
+    if (horizontalLines[i].longueur > 5 && horizontalLines[i].longueur < 10 && horizontalLines[i].m_y0 > pixy.frameHeight * 0.5)
+
     {
       k++;
     }
   }
+
   if (k >= 2)
   {
     finishline = 1;
@@ -409,7 +413,7 @@ void checkForAlignedLines()
 bool checkfinalAngle(int angle)
 {
   int k = 0;
-  int threshold = 25; // Acceptable variation
+  int threshold = 20; // Acceptable variation
   for (int i = 1; i < angleArraySize; i++)
   {
     if (abs(angle - finalAngleArray[i - 1]) > threshold)
@@ -417,7 +421,7 @@ bool checkfinalAngle(int angle)
       k++;
     }
   }
-  if (k > 2)
+  if (k > 3)
   {
     return false;
   }
@@ -476,7 +480,6 @@ bool checkfinalAngle(int angle)
 void loop()
 {
   unsigned long currentMillis = millis();
-
   if (currentMillisCheckHorizentalLines - currentMillis >= 10000)
   {
     checkForAlignedLines();
@@ -487,14 +490,15 @@ void loop()
   int angle = calculateAngle();
   int finalangle = constrain(angle, 30, 150);
   finalangle = map(finalangle, 30, 150, defaultServoAngle - 35, defaultServoAngle + 35);
-  sendData("finalangle", finalangle);
+  // sendData("finalangle", finalangle);
   if (stoppin != LOW)
   {
+    // Serial.println("stop");
     moveCar(0, 0);
   }
   else
   {
-    moveCar(190, 190);
+    moveCar(220, 220);
   }
   finalAngleArray[angleArrayIndex] = finalangle;
   angleArrayIndex++;
@@ -509,7 +513,13 @@ void loop()
   }
   else
   {
+
     bool ok = checkfinalAngle(finalangle);
+    checkForAlignedLines();
+    if (finishline == 1)
+    {
+      digitalWrite(16, HIGH);
+    }
     if (ok)
     {
       setSteeringServo(finalangle);
