@@ -143,22 +143,19 @@ void checkBox()
 
   // Calculate distance in cm
   distance = duration * 0.0343 / 2;
-  Serial.print("Distance: ");
-  Serial.print(duration);
-  Serial.println(" cm");
   if (duration == 0)
   {
     Serial.println("Out of range");
   }
   else
   {
-
-    if (distance < 20)
+    sendData("distance", distance);
+    if (distance < 50)
     {
-      // moveCar(-150, -150);
-      // delay(500);
-      // moveCar(0, 0);
-      // delay(5000);
+      moveCar(-150, -150);
+      delay(700);
+      moveCar(0, 0);
+      delay(5000);
     }
   }
 }
@@ -229,12 +226,11 @@ void filterLines()
     float slope1 = dy1 / dx1;
     float anglDegrees1 = fmod(atan2(dy1, dx1) * (180.0 / M_PI) + 180.0, 180.0);
     // Print index and angle
-    // Serial.print("Vector ");
-    // Serial.print(i);
-    // Serial.print(": Angle = ");
-    // Serial.print(anglDegrees1);
-    // Serial.println(" degrees");
-    // delay(1000);
+    Serial.print("Vector ");
+    Serial.print(i);
+    Serial.print(": Angle = ");
+    Serial.print(anglDegrees1);
+    Serial.println(" degrees");
     int yStart = max(pixy.line.vectors[i].m_y0, pixy.line.vectors[i].m_y1);
     if (horizontalAngle < 20 && horizontalAngle >= 0 && horizontalLinesIndex < HORIZONTAL_LINE_SIZE)
     {
@@ -335,6 +331,7 @@ int calculateAngle()
     //  sendData("angle right", anglDegrees2);
     float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
     robotdistance = constrain(robotdistance, -15, 15);
+    sendData("robot distance", robotdistance);
     calculatedAngle = angleDegrees + robotdistance;
 
     // sendData("calculated angle:", calculatedAngle);
@@ -358,10 +355,10 @@ int calculateAngle()
     float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
 
     int finalcons = map(angleDegrees, 90, 180, 0, 35);
-    robotdistance = constrain(robotdistance, -15, 15);
-
+    robotdistance = constrain(robotdistance, -5, 5);
+    sendData("left robot distance", robotdistance);
     calculatedAngle = calculatedAngle;
-    // Serial.println(q);
+
     //  sendData("angle", calculatedAngle);
   }
   else if (leftVectorsIndex == 0 && rightVectorsIndex >= 1)
@@ -374,7 +371,9 @@ int calculateAngle()
     float dx = rightVectors[0].m_x1 - rightVectors[0].m_x0;
     float dy = rightVectors[0].m_y1 - rightVectors[0].m_y0;
     float angleDegrees = fmod(atan2(dy, dx) * (180.0 / M_PI) + 180.0, 180.0);
-    robotdistance = constrain(robotdistance, -15, 15);
+    robotdistance = constrain(robotdistance, -5, 5);
+    sendData("right robot distance", robotdistance);
+
     calculatedAngle = angleDegrees;
   }
   else if (leftVectorsIndex == 0 && rightVectorsIndex == 0)
@@ -480,10 +479,10 @@ bool checkfinalAngle(int angle)
 void loop()
 {
   unsigned long currentMillis = millis();
-  if (currentMillisCheckHorizentalLines - currentMillis >= 10000)
-  {
-    checkForAlignedLines();
-  }
+  // if (currentMillisCheckHorizentalLines - currentMillis >= 10000)
+  // {
+  //   checkForAlignedLines();
+  // }
   int stoppin = digitalRead(20);
 
   previousMillis = currentMillis;
@@ -498,7 +497,7 @@ void loop()
   }
   else
   {
-    moveCar(220, 220);
+    moveCar(190, 190);
   }
   finalAngleArray[angleArrayIndex] = finalangle;
   angleArrayIndex++;
@@ -513,8 +512,9 @@ void loop()
   }
   else
   {
-
+    // checkBox();
     bool ok = checkfinalAngle(finalangle);
+    ok = true;
     checkForAlignedLines();
     if (finishline == 1)
     {
