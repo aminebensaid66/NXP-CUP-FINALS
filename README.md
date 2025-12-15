@@ -16,7 +16,8 @@ NXP Cup hiya autonomous lane-following robot competition based on camera + micro
 
 ## 📚 Documentation
 
-For detailed hardware design documentation, mechanical considerations, and lessons learned from our competition experience, see [HARDWARE_DOCUMENTATION.md](HARDWARE_DOCUMENTATION.md).
+- **[HARDWARE_DOCUMENTATION.md](HARDWARE_DOCUMENTATION.md)** — Detailed hardware design documentation, mechanical considerations, and lessons learned from our competition experience.
+- **[NXP Cup Information Session Presentation](nxp_cup_presentation.pdf)** — Comprehensive presentation covering competition overview, technical requirements, recommendations, and best practices for building a competitive NXP Cup robot.
 
 ---
 
@@ -108,19 +109,6 @@ Mazelt l location official ma t3rfnahach, **possible Italy 🇮🇹**:
 - Visa processing easy
 - Flights cheap
 - Much better for Tunisia-based teams
-
----
-
-## 🔗 Helpful Links
-
-| Resource            | Link        |
-| ------------------- | ----------- |
-| Pixy2 Documentation | [link here] |
-| Teensy 4.x Overview | [link here] |
-| NXP Cup Gitbook     | [link here] |
-| Example Final Track | [link here] |
-
-_(Add links you use most often for setup, calibration, components, or inspiration.)_
 
 ---
 
