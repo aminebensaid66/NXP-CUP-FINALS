@@ -14,6 +14,12 @@ NXP Cup hiya autonomous lane-following robot competition based on camera + micro
 
 ---
 
+## 📚 Documentation
+
+For detailed hardware design documentation, mechanical considerations, and lessons learned from our competition experience, see [HARDWARE_DOCUMENTATION.md](HARDWARE_DOCUMENTATION.md).
+
+---
+
 ## 🔧 Matériel Utilisé
 
 | Component     | Description                          |
